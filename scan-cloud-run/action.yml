@@ -1,0 +1,37 @@
+name: Scan Cloud Run images
+description: Scan the images that Cloud Run services serve and jobs run, and write a maintenance extra report. Needs gcloud already authenticated.
+inputs:
+  project:
+    description: Google Cloud project ID.
+    required: true
+  region:
+    description: Cloud Run region.
+    required: true
+  output-dir:
+    description: Directory for report.json, inventory.json, and the raw scans.
+    default: maintenance-scan
+  registries:
+    description: Registry hosts to configure Docker credentials for, separated by commas. Empty means <region>-docker.pkg.dev.
+    default: ""
+  language:
+    description: Summary language, en or ja.
+    default: en
+outputs:
+  report:
+    description: Path of the extra report JSON.
+    value: ${{ inputs.output-dir }}/report.json
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        PROJECT: ${{ inputs.project }}
+        REGION: ${{ inputs.region }}
+        OUTPUT_DIR: ${{ inputs.output-dir }}
+        REGISTRIES: ${{ inputs.registries }}
+        LANGUAGE: ${{ inputs.language }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      run: |
+        gcloud auth configure-docker "${REGISTRIES:-$REGION-docker.pkg.dev}" --quiet
+        python3 "$GITHUB_ACTION_PATH/../cloud_run_scan.py" --project "$PROJECT" --region "$REGION" \
+          --output "$OUTPUT_DIR" --run-url "$RUN_URL" --language "$LANGUAGE"
