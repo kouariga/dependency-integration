@@ -12,10 +12,12 @@ def fixture(name: str) -> dict:
     return json.loads((FIXTURES / name).read_text())
 
 
-def pull(number: int, sha: str, *, author: str = "dependabot[bot]", ref: str | None = None, draft: bool = False) -> dict:
+def pull(number: int, sha: str, *, author: str = "dependabot[bot]", ref: str | None = None, draft: bool = False,
+         body: str | None = None) -> dict:
     return {
         "number": number,
         "title": f"Bump package-{number}",
+        "body": body,
         "html_url": f"https://github.com/{REPO}/pull/{number}",
         "draft": draft,
         "user": {"login": author},
@@ -33,11 +35,13 @@ class FakeGitHub:
     """Serves canned payloads by API path, ignoring query strings, like a read-only GitHub."""
 
     def __init__(self, pulls: list[dict], checks: dict[str, dict] | None = None,
-                 statuses: dict[str, list[dict]] | None = None, default_branch: str = "main"):
+                 statuses: dict[str, list[dict]] | None = None, default_branch: str = "main",
+                 comments: dict[int, list[dict]] | None = None):
         self.pulls = pulls
         self.checks = checks or {}
         self.statuses = statuses or {}
         self.default_branch = default_branch
+        self.comments = comments or {}
         self.requested: list[str] = []
 
     def get(self, path: str) -> dict:
@@ -50,9 +54,27 @@ class FakeGitHub:
         route = path.split("?")[0]
         if route == f"repos/{REPO}/pulls":
             return self.pulls
+        if route.endswith("/comments"):
+            return self.comments.get(int(route.split("/")[4]), [])
         sha = route.split("/")[4]
         if route.endswith("/check-runs"):
             return self.checks.get(sha, passing_checks(sha))[key]
         if route.endswith("/status"):
             return self.statuses.get(sha, [])
         raise AssertionError(f"unexpected request {path}")
+
+
+class RecordingPulls:
+    """Records PR writes instead of calling gh."""
+
+    def __init__(self):
+        self.calls: list[tuple[str, object]] = []
+
+    def create(self, summary) -> None:
+        self.calls.append(("create", summary))
+
+    def edit(self, summary) -> None:
+        self.calls.append(("edit", summary))
+
+    def comment(self, summary) -> None:
+        self.calls.append(("comment", summary))

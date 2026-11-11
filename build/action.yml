@@ -12,7 +12,7 @@ inputs:
     default: dependency-integration
 outputs:
   changed:
-    description: "'true' when a bundle with at least one merged PR was uploaded."
+    description: "'true' when publish has work to do: create or update the integration PR, or comment on it."
     value: ${{ steps.build.outputs.changed }}
 runs:
   using: composite
