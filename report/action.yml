@@ -21,7 +21,7 @@ inputs:
     default: maintenance-report.json
   marker-prefix:
     description: Prefix of the hidden markers that tie an issue to its finding key. Changing it orphans existing issues.
-    default: rise-maintenance
+    default: maintenance
   title-prefix:
     description: Issue title prefix. Empty uses the language default.
     default: ""

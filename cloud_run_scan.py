@@ -131,8 +131,11 @@ def scan_image(image, destination, run=subprocess.run):
     return groups
 
 
+RESOURCE_KINDS = {"serving-revision": "service", "configured-job": "job"}
+
+
 def resource_name(resource):
-    return resource["name"].split("/", 1)[0]
+    return RESOURCE_KINDS[resource["kind"]] + "/" + resource["name"].split("/", 1)[0]
 
 
 def resource_findings(resources, groups_by_image, run_url, language: Language):

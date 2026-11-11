@@ -79,7 +79,7 @@ MARKER_PREFIX = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*")
 class Settings:
     """Per-repository wording and the marker prefix that ties an open issue to its finding key."""
 
-    marker_prefix: str = "rise-maintenance"
+    marker_prefix: str = "maintenance"
     title_prefix: str | None = None
     language: Language = Language.EN
 

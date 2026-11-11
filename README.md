@@ -95,7 +95,7 @@ Every extra report is a JSON object with a `findings` list. Each finding has fou
 
 A report file that is missing, unreadable, or not in this shape becomes an `error` finding keyed `read:extra:<file name>`.
 
-**scan-cloud-run** writes `report.json` in this shape into `output-dir`, next to `inventory.json` and one directory per image holding the raw Trivy JSON and a CycloneDX SBOM. Its finding keys are `deployed:fix-available:<resource>` and `deployed:no-fix:<resource>`, where the resource is the service or job name. There is one finding per resource and group, and its summary lists the CVE IDs, so a redeploy with a new digest updates the same issue. A failed scan or an inventory that changed during the scan is the `error` finding `deployed:unavailable`. The scanner runs without the Docker socket: the image is saved with `docker save` and mounted read-only into the Trivy container, which reads it with `--input`.
+**scan-cloud-run** writes `report.json` in this shape into `output-dir`, next to `inventory.json` and one directory per image holding the raw Trivy JSON and a CycloneDX SBOM. Its finding keys are `deployed:fix-available:<resource>` and `deployed:no-fix:<resource>`, where the resource is `service/<name>` or `job/<name>`. There is one finding per resource and group, and its summary lists the CVE IDs, so a redeploy with a new digest updates the same issue. A failed scan or an inventory that changed during the scan is the `error` finding `deployed:unavailable`. The scanner runs without the Docker socket: the image is saved with `docker save` and mounted read-only into the Trivy container, which reads it with `--input`.
 
 ### Setup per repository
 
@@ -123,7 +123,7 @@ Inputs of the report action:
 | `artifact-pattern` | empty | Artifact name globs, one per line. For each, the newest unexpired artifact of this run whose name matches is downloaded into `artifact-dir` before the extras are read. A rerun's upload is newer than the first attempt's, so it wins. A missing artifact is not an error by itself, but its report then counts as missing. |
 | `artifact-dir` | `maintenance-artifacts` | Download directory for `artifact-pattern`. All matches land in the same directory. |
 | `output` | `maintenance-report.json` | Merged report written by the run. |
-| `marker-prefix` | `rise-maintenance` | Prefix of the hidden markers in issue bodies and comments that tie an issue to its key. Changing it makes the action ignore issues opened under the old prefix. |
+| `marker-prefix` | `maintenance` | Prefix of the hidden markers in issue bodies and comments that tie an issue to its key. Changing it makes the action ignore issues opened under the old prefix. |
 | `title-prefix` | empty | Issue title prefix. Empty uses the language default, `[Maintenance] ` for `en` and `[保守] ` for `ja`. |
 | `language` | `en` | Message language, `en` or `ja`. |
 | `publish` | `true` | `false` writes the report without touching issues. |

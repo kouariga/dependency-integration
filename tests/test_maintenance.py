@@ -109,7 +109,7 @@ class MaintenanceTests(unittest.TestCase):
         self.assertEqual(issues[1]["state"], "open")
 
     def test_damaged_managed_block_cannot_be_closed(self):
-        issue = {"number": 9, "title": "old finding", "body": '<!-- rise-maintenance-incident:"ffmpeg" -->\n'
+        issue = {"number": 9, "title": "old finding", "body": '<!-- maintenance-incident:"ffmpeg" -->\n'
                  + JA.start + "\nMissing end"}
         healthy = {**self.report, "findings": [], "complete": True}
         api = mock.Mock(return_value=[[issue]])
@@ -120,14 +120,14 @@ class MaintenanceTests(unittest.TestCase):
     def test_missing_history_does_not_resolve_expired_updater(self):
         key = "updater:old security job"
         report = {**self.report, "findings": [], "complete": True, "observed_keys": []}
-        issue = {"number": 9, "title": "old", "body": '<!-- rise-maintenance-incident:' + json.dumps(key) + ' -->\n'}
+        issue = {"number": 9, "title": "old", "body": '<!-- maintenance-incident:' + json.dumps(key) + ' -->\n'}
         api = mock.Mock(return_value=[[issue]])
         maintenance.publish(api, {"repository": "owner/repo"}, report, "run", JA)
         self.assertEqual(api.call_count, 1)
 
     def test_scheduled_failure_recovers_only_with_observed_scheduled_success(self):
         key = "schedule-outcome:refresh.yml"
-        issue = {"number": 9, "title": "failed schedule", "body": '<!-- rise-maintenance-incident:' + json.dumps(key) + ' -->\n'
+        issue = {"number": 9, "title": "failed schedule", "body": '<!-- maintenance-incident:' + json.dumps(key) + ' -->\n'
                  + JA.start + "\nPrior failure\n" + JA.end}
         config = {"repository": "owner/repo", "workflows": [], "scheduled_workflows": ["refresh.yml"]}
         runs = [{"id": run, "run_attempt": 1, "status": "completed", "conclusion": "cancelled"}
@@ -158,7 +158,7 @@ class MaintenanceTests(unittest.TestCase):
 
     def test_pending_dependabot_rerun_preserves_failure_despite_older_success(self):
         key = "updater:npm_and_yarn in /. for glob"
-        issue = {"number": 9, "title": "failed update", "body": '<!-- rise-maintenance-incident:' + json.dumps(key) + ' -->\n'
+        issue = {"number": 9, "title": "failed update", "body": '<!-- maintenance-incident:' + json.dumps(key) + ' -->\n'
                  + JA.start + "\nPrior failure\n" + JA.end}
         config = {"repository": "owner/repo", "workflows": [], "scheduled_workflows": []}
         older = {**dependabot_run("npm_and_yarn in /. for glob - Update #1694355430", "completed", "success", "older"),
@@ -289,7 +289,7 @@ class MaintenanceTests(unittest.TestCase):
                                      [] if success else [("job:scan", "error")])
 
     def test_job_incident_closes_only_after_observed_success(self):
-        issue = {"number": 9, "title": "failed scan", "body": '<!-- rise-maintenance-incident:"job:scan" -->\n'
+        issue = {"number": 9, "title": "failed scan", "body": '<!-- maintenance-incident:"job:scan" -->\n'
                  + JA.start + "\nPrior failure\n" + JA.end}
         writes = []
 
@@ -342,18 +342,18 @@ class MaintenanceTests(unittest.TestCase):
 class ConfigurationTests(unittest.TestCase):
     def test_default_marker_prefix_keeps_existing_issue_markers(self):
         settings = Settings()
-        self.assertEqual(settings.start, "<!-- rise-maintenance:start -->")
-        self.assertEqual(settings.end, "<!-- rise-maintenance:end -->")
-        self.assertEqual(settings.incident_marker("job:scan"), '<!-- rise-maintenance-incident:"job:scan" -->')
-        self.assertEqual(settings.fingerprint_marker("a" * 64), "<!-- rise-maintenance-fingerprint:" + "a" * 64 + " -->")
-        self.assertEqual(settings.resolved_marker("b" * 64), "<!-- rise-maintenance-resolved:" + "b" * 64 + " -->")
+        self.assertEqual(settings.start, "<!-- maintenance:start -->")
+        self.assertEqual(settings.end, "<!-- maintenance:end -->")
+        self.assertEqual(settings.incident_marker("job:scan"), '<!-- maintenance-incident:"job:scan" -->')
+        self.assertEqual(settings.fingerprint_marker("a" * 64), "<!-- maintenance-fingerprint:" + "a" * 64 + " -->")
+        self.assertEqual(settings.resolved_marker("b" * 64), "<!-- maintenance-resolved:" + "b" * 64 + " -->")
 
     def test_marker_prefix_selects_which_issues_are_managed(self):
-        body = '<!-- rise-maintenance-incident:"job:scan" -->\n' + JA.start + "\nPrior failure\n" + JA.end
+        body = '<!-- maintenance-incident:"job:scan" -->\n' + JA.start + "\nPrior failure\n" + JA.end
         issue = {"number": 9, "title": "failed scan", "body": body}
         report = {"checked_at": "2026-11-11T01:00:00+00:00", "findings": [], "complete": True,
                   "observed_keys": ["job:scan"]}
-        for prefix, closed in (("rise-maintenance", True), ("other-maintenance", False)):
+        for prefix, closed in (("maintenance", True), ("other-maintenance", False)):
             writes = []
 
             def api(path, method="GET", data=None, paginate=False):
@@ -392,13 +392,13 @@ class ConfigurationTests(unittest.TestCase):
                   "findings": [maintenance.finding("pull:7", "Dependabot PR が7日以上未統合です。Bump", "https://example.com/pr")]}
         block, digest = maintenance.render(report, "https://example.com/run", JA)
         self.assertEqual(block, "\n".join([
-            "<!-- rise-maintenance:start -->",
-            "<!-- rise-maintenance-fingerprint:" + digest + " -->",
+            "<!-- maintenance:start -->",
+            "<!-- maintenance-fingerprint:" + digest + " -->",
             "確認時刻 2026-11-11T01:00:00+00:00", "",
             "確認実行 https://example.com/run", "",
             "- Dependabot PR が7日以上未統合です。Bump [根拠](https://example.com/pr)", "",
             "本番配備や例外延長は自動では行いません。検査が正常に完了し解消を確認した指摘は自動で閉じます。",
-            "<!-- rise-maintenance:end -->",
+            "<!-- maintenance:end -->",
         ]))
 
     def test_workflow_history_is_read_from_the_default_branch(self):

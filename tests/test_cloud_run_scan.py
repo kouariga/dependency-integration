@@ -151,12 +151,12 @@ class ReportTests(unittest.TestCase):
     def test_findings_are_keyed_by_resource_with_policy_levels(self):
         code, report, _ = self.run_main()
         self.assertEqual([(item["key"], item["level"]) for item in report["findings"]], [
-            ("deployed:fix-available:api", "attention"),
-            ("deployed:no-fix:api", "warning"),
-            ("deployed:no-fix:batch", "warning"),
+            ("deployed:no-fix:job/batch", "warning"),
+            ("deployed:fix-available:service/api", "attention"),
+            ("deployed:no-fix:service/api", "warning"),
         ])
-        self.assertEqual(report["findings"][0]["summary"],
-                         "Deployed api has HIGH/CRITICAL vulnerabilities (fixed version available): "
+        self.assertEqual(report["findings"][1]["summary"],
+                         "Deployed service/api has HIGH/CRITICAL vulnerabilities (fixed version available): "
                          "CVE-2026-1002, CVE-2026-1004")
         self.assertEqual({item["url"] for item in report["findings"]}, {"run"})
         self.assertEqual(code, 0)
@@ -167,7 +167,7 @@ class ReportTests(unittest.TestCase):
 
     def test_language_selects_summary_wording(self):
         _, report, _ = self.run_main("--language", "ja")
-        self.assertEqual(report["findings"][2]["summary"], "本番配備イメージのHigh/Critical指摘（修正版の情報なし）batch CVE-2026-1003")
+        self.assertEqual(report["findings"][0]["summary"], "本番配備イメージのHigh/Critical指摘（修正版の情報なし）job/batch CVE-2026-1003")
 
     def test_scanner_failure_is_an_error(self):
         def broken(image, destination):
@@ -190,7 +190,7 @@ class ReportTests(unittest.TestCase):
         code, report, _ = self.run_main(cloud=cloud, scan=scan)
         self.assertEqual(code, 1)
         self.assertEqual(report["findings"][-1]["key"], "deployed:unavailable")
-        self.assertIn("deployed:fix-available:api", [item["key"] for item in report["findings"]])
+        self.assertIn("deployed:fix-available:service/api", [item["key"] for item in report["findings"]])
 
     def test_inventory_only_is_reported_as_unscanned(self):
         code, report, _ = self.run_main("--inventory-only")
