@@ -71,14 +71,14 @@ Dependabot notices that each included update is now on the default branch and cl
 
 A daily check that keeps one GitHub issue open for each maintenance problem it finds, and closes the issue once a complete check confirms the problem is gone. Two composite actions share the work.
 
-- **report** reads the repository's own health: the latest completed run of each listed workflow, whether each listed scheduled workflow completed in the last 36 hours and how it ended, the latest result of each Dependabot update job in the last 30 days, and Dependabot PRs open for 7 days or more. It merges extra reports and earlier job results into that, then opens, updates, or closes issues.
+- **report** reads the repository's own health: the latest completed run of each listed workflow, whether each listed scheduled workflow completed in the last 36 hours and how it ended, the latest result of each Dependabot update job in the last 8 days, and Dependabot PRs open for 7 days or more. It merges extra reports and earlier job results into that, then opens, updates, or closes issues.
 - **scan-cloud-run** lists the image digest of every serving revision of every Cloud Run service and of every Cloud Run job in one project and region, scans each image with a pinned Trivy, and writes an extra report for **report** to read. With `inventory-file` it scans the images that file lists instead.
 
 ### Policy
 
 Vulnerability findings never fail anything. They are reported: a HIGH or CRITICAL vulnerability with a fixed version is an `attention` finding, and one without a fixed version is a `warning` finding. Only infrastructure failures are `error` findings: a scanner or gcloud failure, history that cannot be read, a missing or malformed extra report, or an earlier job that did not succeed. The report step exits with status 1 when there is an `error` finding, so the failure shows in the Actions tab. It never fails because of `attention` or `warning` findings.
 
-An issue is closed only when the report is complete. A report is complete when `required_reports` is not empty and the report has no `error` finding and no `deployed:unscanned` finding. A workflow, scheduled outcome, updater, or job finding closes only once a later result for it was actually observed, and a stale PR finding closes only once the PR is closed. Before closing, the run posts one comment with its evidence. A retry of a failed close does not post it again.
+An issue is closed only when the report is complete. A report is complete when `required_reports` is not empty and the report has no `error` finding and no `deployed:unscanned` finding. A workflow, scheduled outcome, or job finding closes only once a later result for it was actually observed. A failed Dependabot update job closes once a later run succeeds or once no run of it is left in the 8-day window, which is what happens when its alert is dismissed and Dependabot stops retrying; and a stale PR finding closes only once the PR is closed. Before closing, the run posts one comment with its evidence. A retry of a failed close does not post it again.
 
 ### Report contract
 

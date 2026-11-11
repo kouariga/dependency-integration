@@ -16,7 +16,10 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable
 
-CLOSE_ONLY_WHEN_OBSERVED = ("workflow:", "schedule-outcome:", "updater:", "job:")
+# Dependabot stops an update job for good once its alert is dismissed, so no later result ever arrives.
+# Its finding closes when the failed run ages out of UPDATER_WINDOW instead.
+CLOSE_ONLY_WHEN_OBSERVED = ("workflow:", "schedule-outcome:", "job:")
+UPDATER_WINDOW = timedelta(days=8)
 READ_ERRORS = (subprocess.CalledProcessError, KeyError, ValueError)
 
 
@@ -215,7 +218,7 @@ def collect(api: Api, config, now, settings: Settings):
                 errors.append(finding("read:" + section + ":" + name, settings.text("read_history", name=name),
                                       level="error"))
     try:
-        since = (now - timedelta(days=30)).strftime("%Y-%m-%d")
+        since = (now - UPDATER_WINDOW).strftime("%Y-%m-%d")
         pages = api(base + "/actions/runs?event=dynamic&per_page=100&created=>=" + since, paginate=True)
         runs = (run for page in pages for run in page["workflow_runs"] if is_dependabot_update(run))
         snapshot["updates"] = completed_results(api, base, runs)

@@ -117,13 +117,33 @@ class MaintenanceTests(unittest.TestCase):
             maintenance.publish(api, {"repository": "owner/repo"}, healthy, "run", JA)
         self.assertEqual(api.call_count, 1)
 
-    def test_missing_history_does_not_resolve_expired_updater(self):
+    def test_updater_that_aged_out_of_the_window_closes_on_a_complete_report(self):
         key = "updater:old security job"
         report = {**self.report, "findings": [], "complete": True, "observed_keys": []}
-        issue = {"number": 9, "title": "old", "body": '<!-- maintenance-incident:' + json.dumps(key) + ' -->\n'}
-        api = mock.Mock(return_value=[[issue]])
+        issue = {"number": 9, "title": "old", "body": '<!-- maintenance-incident:' + json.dumps(key) + ' -->\n'
+                 + JA.start + "\nPrior failure\n" + JA.end}
+        writes = []
+
+        def api(path, method="GET", data=None, paginate=False):
+            if method != "GET":
+                writes.append((path, method))
+            return [[issue]] if "/issues?state=open" in path else []
+
         maintenance.publish(api, {"repository": "owner/repo"}, report, "run", JA)
-        self.assertEqual(api.call_count, 1)
+        self.assertIn(("repos/owner/repo/issues/9", "PATCH"), writes)
+
+    def test_updater_runs_are_read_only_within_the_window(self):
+        paths = []
+
+        def api(path, method="GET", data=None, paginate=False):
+            paths.append(path)
+            if path == "repos/owner/repo":
+                return BRANCH
+            return []
+
+        maintenance.collect(api, {"repository": "owner/repo", "workflows": [], "scheduled_workflows": []}, self.now, JA)
+        since = (self.now - maintenance.UPDATER_WINDOW).strftime("%Y-%m-%d")
+        self.assertIn(f"repos/owner/repo/actions/runs?event=dynamic&per_page=100&created=>={since}", paths)
 
     def test_scheduled_failure_recovers_only_with_observed_scheduled_success(self):
         key = "schedule-outcome:refresh.yml"
