@@ -1,0 +1,38 @@
+name: Build dependency integration
+description: Merge passing Dependabot PRs into a local branch and upload it as a git bundle. Needs no secrets.
+inputs:
+  branch-prefix:
+    description: Head branch prefix of integration PRs.
+    default: deps/integration-
+  ignore-checks:
+    description: Check names to ignore when judging a Dependabot PR, separated by commas or newlines.
+    default: codex-cloud-review
+  artifact-name:
+    description: Name of the uploaded artifact.
+    default: dependency-integration
+outputs:
+  changed:
+    description: "'true' when a bundle with at least one merged PR was uploaded."
+    value: ${{ steps.build.outputs.changed }}
+runs:
+  using: composite
+  steps:
+    - id: build
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        BRANCH_PREFIX: ${{ inputs.branch-prefix }}
+        IGNORE_CHECKS: ${{ inputs.ignore-checks }}
+        OUT_DIR: ${{ runner.temp }}/dependency-integration
+      run: >-
+        python3 "$GITHUB_ACTION_PATH/../integrate.py" build
+        --branch-prefix "$BRANCH_PREFIX"
+        --ignore-checks "$IGNORE_CHECKS"
+        --out-dir "$OUT_DIR"
+    - if: steps.build.outputs.changed == 'true'
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: ${{ runner.temp }}/dependency-integration
+        if-no-files-found: error
+        retention-days: 3

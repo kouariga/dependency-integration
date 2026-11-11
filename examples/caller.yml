@@ -1,0 +1,42 @@
+# Copy to .github/workflows/dependency-integration.yml and replace <sha> with a full commit SHA of kouariga/dependency-integration.
+name: Dependency integration
+
+on:
+  schedule:
+    - cron: "17 1 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: dependency-integration
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+      checks: read
+      statuses: read
+    outputs:
+      changed: ${{ steps.build.outputs.changed }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: build
+        uses: kouariga/dependency-integration/build@<sha>
+
+  publish:
+    needs: build
+    if: needs.build.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    environment: dependency-integration
+    permissions: {}
+    steps:
+      - uses: kouariga/dependency-integration/publish@<sha>
+        with:
+          token: ${{ secrets.DEPENDENCY_INTEGRATION_TOKEN }}

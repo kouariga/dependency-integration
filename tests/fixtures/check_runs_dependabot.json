@@ -1,0 +1,38 @@
+{
+  "total_count": 3,
+  "check_runs": [
+    {
+      "name": "codex-cloud-review",
+      "head_sha": "1111111111111111111111111111111111111111",
+      "status": "completed",
+      "conclusion": "failure",
+      "started_at": "2026-11-09T00:28:28Z",
+      "completed_at": "2026-11-09T00:48:35Z",
+      "app": {
+        "slug": "github-actions"
+      }
+    },
+    {
+      "name": "ci",
+      "head_sha": "1111111111111111111111111111111111111111",
+      "status": "completed",
+      "conclusion": "failure",
+      "started_at": "2026-11-09T00:28:26Z",
+      "completed_at": "2026-11-09T00:30:30Z",
+      "app": {
+        "slug": "github-actions"
+      }
+    },
+    {
+      "name": "review / observe",
+      "head_sha": "1111111111111111111111111111111111111111",
+      "status": "completed",
+      "conclusion": "success",
+      "started_at": "2026-11-09T00:28:25Z",
+      "completed_at": "2026-11-09T00:48:36Z",
+      "app": {
+        "slug": "github-actions"
+      }
+    }
+  ]
+}
