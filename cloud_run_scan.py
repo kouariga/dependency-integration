@@ -87,6 +87,25 @@ def inventory(cloud, project, region):
     return sorted(resources, key=lambda resource: (resource["kind"], resource["name"]))
 
 
+def listed_inventory(path):
+    """Read a caller-provided inventory of logical names, so finding keys survive per-release resource names."""
+    entries = json.loads(Path(path).read_text())
+    if not isinstance(entries, list) or not entries:
+        raise ValueError("Inventory file must be a non-empty list")
+    resources = []
+    for entry in entries:
+        if not isinstance(entry, dict) or set(entry) != {"kind", "name", "image"}:
+            raise ValueError("Inventory entry must have exactly kind, name, and image")
+        if entry["kind"] not in ("service", "job"):
+            raise ValueError("Inventory kind must be service or job")
+        if not isinstance(entry["name"], str) or not re.fullmatch(r"[a-z0-9][a-z0-9-]*", entry["name"]):
+            raise ValueError("Inventory name must be a lowercase logical name")
+        resources.append({"kind": entry["kind"], "name": entry["name"], "image": immutable(entry["image"])})
+    if len({(resource["kind"], resource["name"]) for resource in resources}) != len(resources):
+        raise ValueError("Inventory file lists a resource twice")
+    return sorted(resources, key=lambda resource: (resource["kind"], resource["name"]))
+
+
 def vulnerability_groups(scan):
     os = scan["Metadata"]["OS"]
     if (scan.get("SchemaVersion") != 2 or scan.get("ArtifactType") != "container_image"
@@ -135,7 +154,9 @@ RESOURCE_KINDS = {"serving-revision": "service", "configured-job": "job"}
 
 
 def resource_name(resource):
-    return RESOURCE_KINDS[resource["kind"]] + "/" + resource["name"].split("/", 1)[0]
+    if resource["kind"] in RESOURCE_KINDS:
+        return RESOURCE_KINDS[resource["kind"]] + "/" + resource["name"].split("/", 1)[0]
+    return resource["kind"] + "/" + resource["name"]
 
 
 def resource_findings(resources, groups_by_image, run_url, language: Language):
@@ -161,13 +182,18 @@ def annotation(item):
     return "::warning::" + message
 
 
-def scan_project(cloud, scan, project, region, output: Path, run_url, language: Language, inventory_only=False):
+def scan_project(cloud, scan, project, region, output: Path, run_url, language: Language, inventory_only=False,
+                 inventory_file=None):
     text = MESSAGES[language]
+    scope = "inventory file" if inventory_file else "serving revisions and configured job templates"
     report = {"checked_at": datetime.now(timezone.utc).isoformat(), "project": project,
-              "scope": "serving revisions and configured job templates", "resources": [], "findings": []}
+              "scope": scope, "resources": [], "findings": []}
     groups_by_image = {}
     try:
-        report["resources"] = inventory(cloud, project, region)
+        if inventory_file:
+            report["resources"] = listed_inventory(inventory_file)
+        else:
+            report["resources"] = inventory(cloud, project, region)
         (output / "inventory.json").write_text(json.dumps(report["resources"], indent=2) + "\n")
         if inventory_only:
             report["findings"].append({"key": "deployed:unscanned", "level": "attention",
@@ -178,7 +204,7 @@ def scan_project(cloud, scan, project, region, output: Path, run_url, language: 
             destination.mkdir(exist_ok=True)
             (destination / "image.json").write_text(json.dumps({"image": image, "scanner": SCANNER}) + "\n")
             groups_by_image[image] = scan(image, destination)
-        if inventory(cloud, project, region) != report["resources"]:
+        if not inventory_file and inventory(cloud, project, region) != report["resources"]:
             raise ValueError("Deployed image inventory changed during the scan")
     except SCAN_ERRORS as error:
         report["findings"].append({"key": "deployed:unavailable", "level": "error",
@@ -190,17 +216,20 @@ def scan_project(cloud, scan, project, region, output: Path, run_url, language: 
 
 def main(argv=None, cloud=gcloud, scan=scan_image):
     parser = argparse.ArgumentParser()
-    parser.add_argument("--project", required=True)
+    parser.add_argument("--project", default="")
     parser.add_argument("--region", required=True)
     parser.add_argument("--output", required=True)
+    parser.add_argument("--inventory-file", default="")
     parser.add_argument("--inventory-only", action="store_true")
     parser.add_argument("--run-url", default="")
     parser.add_argument("--language", choices=[language.value for language in Language], default=Language.EN.value)
     args = parser.parse_args(argv)
+    if not args.project and not args.inventory_file:
+        parser.error("--project is required unless --inventory-file is given")
     output = Path(args.output)
     output.mkdir(parents=True, exist_ok=True)
-    report = scan_project(cloud, scan, args.project, args.region, output, args.run_url, Language(args.language),
-                          args.inventory_only)
+    report = scan_project(cloud, scan, args.project or None, args.region, output, args.run_url,
+                          Language(args.language), args.inventory_only, args.inventory_file or None)
     (output / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n")
     for item in report["findings"]:
         if item["key"].startswith(tuple(f"deployed:{group}:" for group in GROUP_LEVELS)):

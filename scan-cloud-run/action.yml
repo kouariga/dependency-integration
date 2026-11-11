@@ -2,11 +2,14 @@ name: Scan Cloud Run images
 description: Scan the images that Cloud Run services serve and jobs run, and write a maintenance extra report. Needs gcloud already authenticated.
 inputs:
   project:
-    description: Google Cloud project ID.
-    required: true
+    description: Google Cloud project ID. Required unless inventory-file is set.
+    default: ""
   region:
     description: Cloud Run region.
     required: true
+  inventory-file:
+    description: JSON list of {kind, name, image} to scan instead of discovering Cloud Run resources. Empty means discovery.
+    default: ""
   output-dir:
     description: Directory for report.json, inventory.json, and the raw scans.
     default: maintenance-scan
@@ -28,10 +31,11 @@ runs:
         PROJECT: ${{ inputs.project }}
         REGION: ${{ inputs.region }}
         OUTPUT_DIR: ${{ inputs.output-dir }}
+        INVENTORY_FILE: ${{ inputs.inventory-file }}
         REGISTRIES: ${{ inputs.registries }}
         LANGUAGE: ${{ inputs.language }}
         RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       run: |
         gcloud auth configure-docker "${REGISTRIES:-$REGION-docker.pkg.dev}" --quiet
         python3 "$GITHUB_ACTION_PATH/../cloud_run_scan.py" --project "$PROJECT" --region "$REGION" \
-          --output "$OUTPUT_DIR" --run-url "$RUN_URL" --language "$LANGUAGE"
+          --inventory-file "$INVENTORY_FILE" --output "$OUTPUT_DIR" --run-url "$RUN_URL" --language "$LANGUAGE"

@@ -206,5 +206,79 @@ class ReportTests(unittest.TestCase):
             self.assertTrue((Path(directory) / "inventory.json").exists())
 
 
+def refuse_cloud(*args):
+    raise AssertionError("discovery must not run with an inventory file")
+
+
+class InventoryFileTests(unittest.TestCase):
+    def run_file(self, entries, *extra, scan=fake_scan):
+        with TemporaryDirectory() as directory, contextlib.redirect_stdout(io.StringIO()):
+            path = Path(directory) / "listed.json"
+            path.write_text(entries if isinstance(entries, str) else json.dumps(entries))
+            argv = ["--region", "example-region", "--output", directory, "--run-url", "run",
+                    "--inventory-file", str(path), *extra]
+            code = security.main(argv, cloud=refuse_cloud, scan=scan)
+            report = json.loads((Path(directory) / "report.json").read_text())
+        return code, report
+
+    def test_listed_images_are_scanned_under_logical_names_without_project(self):
+        listed = [{"kind": "service", "name": "gateway", "image": API_IMAGE},
+                  {"kind": "job", "name": "drive-sync", "image": JOB_IMAGE}]
+        scanned = []
+
+        def scan(image, destination):
+            scanned.append(image)
+            return GROUPS[image]
+
+        code, report = self.run_file(listed, scan=scan)
+        self.assertEqual(code, 0)
+        self.assertEqual(sorted(scanned), sorted([API_IMAGE, JOB_IMAGE]))
+        self.assertEqual([item["key"] for item in report["findings"]], [
+            "deployed:no-fix:job/drive-sync",
+            "deployed:fix-available:service/gateway",
+            "deployed:no-fix:service/gateway",
+        ])
+
+    def test_keys_do_not_change_when_a_release_changes_the_image(self):
+        _, first = self.run_file([{"kind": "job", "name": "drive-sync", "image": API_IMAGE}])
+        _, second = self.run_file([{"kind": "job", "name": "drive-sync", "image": PREVIEW_IMAGE}])
+        self.assertEqual([item["key"] for item in first["findings"]],
+                         ["deployed:fix-available:job/drive-sync", "deployed:no-fix:job/drive-sync"])
+        self.assertEqual([item["key"] for item in second["findings"]], ["deployed:fix-available:job/drive-sync"])
+
+    def test_invalid_inventory_files_are_an_error_finding(self):
+        valid = {"kind": "job", "name": "drive-sync", "image": JOB_IMAGE}
+        cases = {
+            "empty list": [],
+            "not a list": {"jobs": [valid]},
+            "unknown kind": [{**valid, "kind": "revision"}],
+            "tag instead of digest": [{**valid, "image": "registry.example/job:latest"}],
+            "duplicate resource": [valid, {**valid, "image": API_IMAGE}],
+            "missing field": [{"kind": "job", "name": "drive-sync"}],
+            "extra field": [{**valid, "revision": "r1"}],
+            "name with a slash": [{**valid, "name": "drive-sync/0"}],
+            "not json": "[",
+        }
+        for case, entries in cases.items():
+            with self.subTest(case=case):
+                code, report = self.run_file(entries)
+                self.assertEqual(code, 1)
+                self.assertEqual([(item["key"], item["level"]) for item in report["findings"]],
+                                 [("deployed:unavailable", "error")])
+
+    def test_missing_inventory_file_is_an_error_finding(self):
+        with TemporaryDirectory() as directory, contextlib.redirect_stdout(io.StringIO()):
+            code = security.main(["--region", "r", "--output", directory, "--inventory-file",
+                                  str(Path(directory) / "absent.json")], cloud=refuse_cloud, scan=fake_scan)
+            report = json.loads((Path(directory) / "report.json").read_text())
+        self.assertEqual(code, 1)
+        self.assertEqual([item["key"] for item in report["findings"]], ["deployed:unavailable"])
+
+    def test_discovery_still_requires_a_project(self):
+        with TemporaryDirectory() as directory, contextlib.redirect_stderr(io.StringIO()), \
+                self.assertRaises(SystemExit):
+            security.main(["--region", "r", "--output", directory], cloud=FakeCloud(), scan=fake_scan)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -72,7 +72,7 @@ Dependabot notices that each included update is now on the default branch and cl
 A daily check that keeps one GitHub issue open for each maintenance problem it finds, and closes the issue once a complete check confirms the problem is gone. Two composite actions share the work.
 
 - **report** reads the repository's own health: the latest completed run of each listed workflow, whether each listed scheduled workflow completed in the last 36 hours and how it ended, the latest result of each Dependabot update job in the last 30 days, and Dependabot PRs open for 7 days or more. It merges extra reports and earlier job results into that, then opens, updates, or closes issues.
-- **scan-cloud-run** lists the image digest of every serving revision of every Cloud Run service and of every Cloud Run job in one project and region, scans each image with a pinned Trivy, and writes an extra report for **report** to read.
+- **scan-cloud-run** lists the image digest of every serving revision of every Cloud Run service and of every Cloud Run job in one project and region, scans each image with a pinned Trivy, and writes an extra report for **report** to read. With `inventory-file` it scans the images that file lists instead.
 
 ### Policy
 
@@ -95,7 +95,7 @@ Every extra report is a JSON object with a `findings` list. Each finding has fou
 
 A report file that is missing, unreadable, or not in this shape becomes an `error` finding keyed `read:extra:<file name>`.
 
-**scan-cloud-run** writes `report.json` in this shape into `output-dir`, next to `inventory.json` and one directory per image holding the raw Trivy JSON and a CycloneDX SBOM. Its finding keys are `deployed:fix-available:<resource>` and `deployed:no-fix:<resource>`, where the resource is `service/<name>` or `job/<name>`. There is one finding per resource and group, and its summary lists the CVE IDs, so a redeploy with a new digest updates the same issue. A failed scan or an inventory that changed during the scan is the `error` finding `deployed:unavailable`. The scanner runs without the Docker socket: the image is saved with `docker save` and mounted read-only into the Trivy container, which reads it with `--input`.
+**scan-cloud-run** writes `report.json` in this shape into `output-dir`, next to `inventory.json` and one directory per image holding the raw Trivy JSON and a CycloneDX SBOM. Its finding keys are `deployed:fix-available:<resource>` and `deployed:no-fix:<resource>`, where the resource is `service/<name>` or `job/<name>`. There is one finding per resource and group, and its summary lists the CVE IDs, so a redeploy with a new digest updates the same issue. A failed scan or an inventory that changed during the scan is the `error` finding `deployed:unavailable`. With `inventory-file`, a missing or invalid file is the same `error` finding. The scanner runs without the Docker socket: the image is saved with `docker save` and mounted read-only into the Trivy container, which reads it with `--input`.
 
 ### Setup per repository
 
@@ -132,13 +132,32 @@ Inputs of the scan-cloud-run action:
 
 | Input | Default | Meaning |
 | --- | --- | --- |
-| `project` | required | Google Cloud project ID, for example `example-project`. |
-| `region` | required | Cloud Run region. |
+| `project` | empty | Google Cloud project ID, for example `example-project`. Required unless `inventory-file` is set. |
+| `region` | required | Cloud Run region. Also the default registry host for Docker credentials. |
+| `inventory-file` | empty | Path to a JSON list of resources to scan instead of discovering them. See below. |
 | `output-dir` | `maintenance-scan` | Directory for `report.json`, `inventory.json`, and the raw scans. Upload it as an artifact so the report job can read it. |
 | `registries` | `<region>-docker.pkg.dev` | Registry hosts to configure Docker credentials for, separated by commas. |
 | `language` | `en` | Summary language, `en` or `ja`. |
 
 Issue bodies hold a managed block between two hidden markers. The run rewrites only that block, so notes written above or below it are kept. An issue with a damaged block or two markers for one key stops the run instead of being guessed at.
+
+#### Inventory file
+
+Discovery scans every Cloud Run service and job in the project. That does not fit a project that creates a new job per release and keeps the old ones, or that shares one project between environments. Old releases and other environments are scanned too, and each release gets its own finding keys. Such a repository writes the list of what is live itself and passes it as `inventory-file`:
+
+```json
+[
+  {"kind": "job", "name": "drive-sync", "image": "asia-northeast1-docker.pkg.dev/example-project/app/sync@sha256:<64 hex>"},
+  {"kind": "service", "name": "search-gateway", "image": "asia-northeast1-docker.pkg.dev/example-project/app/gateway@sha256:<64 hex>"}
+]
+```
+
+- `kind` is `service` or `job`.
+- `name` is a logical name of lowercase letters, digits, and hyphens. Finding keys use `<kind>/<name>`, for example `deployed:no-fix:job/drive-sync`, so name a resource the same way in every release.
+- `image` is an image reference pinned by `@sha256:` digest.
+- Each entry has exactly these three fields, the list is not empty, and no `kind` and `name` pair appears twice.
+
+A file that breaks any of these rules is the `error` finding `deployed:unavailable`. With a file the action does not call the Cloud Run API, so it does not check the inventory again after the scan. The caller is responsible for the file matching what is deployed.
 
 ### Adding a repository-specific report
 
