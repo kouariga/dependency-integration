@@ -8,7 +8,7 @@ inputs:
     description: Extra report paths, one per line, each shaped {"findings":[{key, level, summary, url}]}.
     default: ""
   job-results:
-    description: Results of earlier jobs, one NAME=CONCLUSION per line, for example scan=${{ needs.scan.result }}.
+    description: Results of earlier jobs, one NAME=CONCLUSION per line, for example scan=success. Callers pass the needs context of their own job.
     default: ""
   artifact-pattern:
     description: Artifact name globs, one per line. The newest unexpired match in this run is downloaded into artifact-dir before extras are read.
