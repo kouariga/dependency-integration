@@ -37,16 +37,15 @@ The work is split into two jobs so that no job holds a secret while it touches P
 - **build** runs with only `GITHUB_TOKEN` and read permissions. It fetches the Dependabot heads and merges them, and fetches the open integration PR's head to inspect its commits, but executes nothing from them: no install, no build, no scripts, and git hooks are pointed at an empty directory. Merge commits are authored as `github-actions[bot]`. The result leaves the job as a `summary.json` and, when there is a branch to push, a git bundle in a workflow artifact. The summary names the plan for publish: `create`, `update`, or `notify`.
 - **publish** runs in the `dependency-integration` environment, which holds the token. It never checks out the target repository and runs no code from it. It downloads the artifact, checks that the open integration PRs are the ones build saw, checks that the bundle is valid and that its base commit is still on the default branch, pushes the branch, and calls `gh pr create` or `gh pr edit`. For `notify` it only calls `gh pr comment`. The token reaches git through an environment-provided `http.extraheader` and reaches `gh` through `GH_TOKEN`. It never appears in a URL or command line.
 
-Both jobs run only code from this repository, pinned by commit SHA in the caller.
+Both jobs run only code from this repository, at the release the caller references.
 
 ## Setup per repository
 
 1. Create a fine-grained personal access token. Limit it to the repositories that use this workflow. Grant repository permissions Contents, Pull requests, and Workflows, all read and write. Workflows is needed because Dependabot updates to `.github/workflows` files are pushed as part of the integration branch.
 2. In each repository, create the environment `dependency-integration`. Under deployment branches, allow only the default branch.
 3. Add the token to that environment as the secret `DEPENDENCY_INTEGRATION_TOKEN`. Do not add it as a repository secret.
-4. Copy [`examples/caller.yml`](examples/caller.yml) to `.github/workflows/dependency-integration.yml`.
-5. Replace both `<sha>` placeholders with the full commit SHA of the release of this repository you reviewed. Do not use a branch or tag.
-6. Run the workflow once with **Run workflow** to check the setup.
+4. Copy [`examples/caller.yml`](examples/caller.yml) to `.github/workflows/dependency-integration.yml`. It references this repository at `v1`; see [Release and rollback](#release-and-rollback).
+5. Run the workflow once with **Run workflow** to check the setup.
 
 Inputs of the build action:
 
@@ -100,7 +99,7 @@ A report file that is missing, unreadable, or not in this shape becomes an `erro
 ### Setup per repository
 
 1. Add `.github/maintenance.json`. See [`examples/maintenance.json`](examples/maintenance.json). `workflows` lists workflow files whose latest completed run on the default branch must succeed. `scheduled_workflows` lists workflow files that must complete a scheduled run every 36 hours. `required_reports` lists the file names of extra reports every run must provide. `repository` is optional and defaults to the current repository.
-2. Copy [`examples/maintenance-caller.yml`](examples/maintenance-caller.yml) to `.github/workflows/dependency-maintenance.yml` and replace each `<sha>` with the full commit SHA of the release of this repository you reviewed.
+2. Copy [`examples/maintenance-caller.yml`](examples/maintenance-caller.yml) to `.github/workflows/dependency-maintenance.yml`. It references this repository at `v1`.
 3. Set the repository variables the example reads: the Workload Identity provider, a read-only service account, the Google Cloud project, and the region.
 4. Run the workflow once with **Run workflow** to check the setup.
 
@@ -187,6 +186,17 @@ python3 -m unittest discover -s tests -v
 ```
 
 The tests include an end-to-end run of the git steps against local bare repositories, with the GitHub API stubbed.
+
+## Release and rollback
+
+Callers reference this repository at the moving `v1` tag, so a compatible release reaches every caller without update PRs. Third-party actions inside this repository stay pinned by commit SHA.
+
+1. Merge a change only after its tests pass and it has been reviewed. Record the merged commit SHA.
+2. Verify that commit with a real run before releasing it. Point one caller, or a throwaway repository, at the commit SHA and run the workflow it changes.
+3. Create an immutable tag such as `v1.0.1` at the verified commit, then move `v1` to the same commit. Merging to `main` does not release anything.
+4. Record the previous and new `v1` commits. To roll back, move `v1` back to the previous release tag. Runs that start afterwards use it; runs already in progress do not change.
+
+An incompatible change to inputs, outputs, or the files a caller must provide gets a new major tag such as `v2`, and callers move to it in their own PRs. A caller that wants to adopt releases one at a time can pin a full commit SHA instead of `v1`.
 
 ## License
 

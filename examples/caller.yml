@@ -1,4 +1,4 @@
-# Copy to .github/workflows/dependency-integration.yml and replace <sha> with a full commit SHA of kouariga/dependency-integration.
+# Copy to .github/workflows/dependency-integration.yml.
 name: Dependency integration
 
 on:
@@ -29,7 +29,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - id: build
-        uses: kouariga/dependency-integration/build@<sha>
+        uses: kouariga/dependency-integration/build@v1
 
   publish:
     needs: build
@@ -38,6 +38,6 @@ jobs:
     environment: dependency-integration
     permissions: {}
     steps:
-      - uses: kouariga/dependency-integration/publish@<sha>
+      - uses: kouariga/dependency-integration/publish@v1
         with:
           token: ${{ secrets.DEPENDENCY_INTEGRATION_TOKEN }}

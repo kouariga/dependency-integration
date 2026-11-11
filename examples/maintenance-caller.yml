@@ -1,5 +1,4 @@
-# Copy to .github/workflows/dependency-maintenance.yml, replace <sha> with a full commit SHA of
-# kouariga/dependency-integration, and set the vars named below.
+# Copy to .github/workflows/dependency-maintenance.yml and set the vars named below.
 name: Dependency maintenance
 
 on:
@@ -30,7 +29,7 @@ jobs:
           workload_identity_provider: ${{ vars.MAINTENANCE_WIF_PROVIDER }}
           service_account: ${{ vars.MAINTENANCE_READ_SERVICE_ACCOUNT }}
       - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
-      - uses: kouariga/dependency-integration/scan-cloud-run@<sha>
+      - uses: kouariga/dependency-integration/scan-cloud-run@v1
         with:
           project: ${{ vars.MAINTENANCE_GCP_PROJECT }}
           region: ${{ vars.MAINTENANCE_GCP_REGION }}
@@ -57,7 +56,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: kouariga/dependency-integration/report@<sha>
+      - uses: kouariga/dependency-integration/report@v1
         with:
           config: .github/maintenance.json
           artifact-pattern: deployed-security-*
