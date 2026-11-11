@@ -1,0 +1,67 @@
+name: Maintenance report
+description: Collect workflow, schedule, and Dependabot health, merge extra reports, and keep one issue open per finding.
+inputs:
+  config:
+    description: Path to the repository's maintenance.json.
+    default: .github/maintenance.json
+  extras:
+    description: Extra report paths, one per line, each shaped {"findings":[{key, level, summary, url}]}.
+    default: ""
+  job-results:
+    description: Results of earlier jobs, one NAME=CONCLUSION per line, for example scan=${{ needs.scan.result }}.
+    default: ""
+  artifact-pattern:
+    description: Artifact name globs, one per line. The newest unexpired match in this run is downloaded into artifact-dir before extras are read.
+    default: ""
+  artifact-dir:
+    description: Directory that matched artifacts are downloaded into.
+    default: maintenance-artifacts
+  output:
+    description: Where to write the merged report JSON.
+    default: maintenance-report.json
+  marker-prefix:
+    description: Prefix of the hidden markers that tie an issue to its finding key. Changing it orphans existing issues.
+    default: rise-maintenance
+  title-prefix:
+    description: Issue title prefix. Empty uses the language default.
+    default: ""
+  language:
+    description: Message language, en or ja.
+    default: en
+  publish:
+    description: "'true' opens, updates, and closes issues. 'false' only writes the report."
+    default: "true"
+outputs:
+  report:
+    description: Path of the merged report JSON.
+    value: ${{ inputs.output }}
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        CONFIG: ${{ inputs.config }}
+        EXTRAS: ${{ inputs.extras }}
+        JOB_RESULTS: ${{ inputs.job-results }}
+        ARTIFACT_PATTERNS: ${{ inputs.artifact-pattern }}
+        ARTIFACT_DIR: ${{ inputs.artifact-dir }}
+        OUTPUT: ${{ inputs.output }}
+        MARKER_PREFIX: ${{ inputs.marker-prefix }}
+        TITLE_PREFIX: ${{ inputs.title-prefix }}
+        LANGUAGE: ${{ inputs.language }}
+        PUBLISH: ${{ inputs.publish }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      run: |
+        args=(--config "$CONFIG" --output "$OUTPUT" --run-url "$RUN_URL" --artifact-dir "$ARTIFACT_DIR"
+              --marker-prefix "$MARKER_PREFIX" --language "$LANGUAGE")
+        while read -r line; do if [ -n "$line" ]; then args+=(--extra "$line"); fi; done <<< "$EXTRAS"
+        while read -r line; do if [ -n "$line" ]; then args+=(--job-result "$line"); fi; done <<< "$JOB_RESULTS"
+        while read -r line; do if [ -n "$line" ]; then args+=(--artifact-pattern "$line"); fi; done <<< "$ARTIFACT_PATTERNS"
+        if [ -n "$TITLE_PREFIX" ]; then args+=(--title-prefix "$TITLE_PREFIX"); fi
+        case "$PUBLISH" in
+          true) args+=(--publish) ;;
+          false) ;;
+          *) echo "::error::publish must be true or false, got '$PUBLISH'"; exit 1 ;;
+        esac
+        python3 "$GITHUB_ACTION_PATH/../maintenance.py" "${args[@]}"
