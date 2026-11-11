@@ -19,12 +19,6 @@ inputs:
   output:
     description: Where to write the merged report JSON.
     default: maintenance-report.json
-  marker-prefix:
-    description: Prefix of the hidden markers that tie an issue to its finding key. Changing it orphans existing issues.
-    default: maintenance
-  title-prefix:
-    description: Issue title prefix. Empty uses the language default.
-    default: ""
   language:
     description: Message language, en or ja.
     default: en
@@ -47,18 +41,15 @@ runs:
         ARTIFACT_PATTERNS: ${{ inputs.artifact-pattern }}
         ARTIFACT_DIR: ${{ inputs.artifact-dir }}
         OUTPUT: ${{ inputs.output }}
-        MARKER_PREFIX: ${{ inputs.marker-prefix }}
-        TITLE_PREFIX: ${{ inputs.title-prefix }}
         LANGUAGE: ${{ inputs.language }}
         PUBLISH: ${{ inputs.publish }}
         RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       run: |
         args=(--config "$CONFIG" --output "$OUTPUT" --run-url "$RUN_URL" --artifact-dir "$ARTIFACT_DIR"
-              --marker-prefix "$MARKER_PREFIX" --language "$LANGUAGE")
+              --language "$LANGUAGE")
         while read -r line; do if [ -n "$line" ]; then args+=(--extra "$line"); fi; done <<< "$EXTRAS"
         while read -r line; do if [ -n "$line" ]; then args+=(--job-result "$line"); fi; done <<< "$JOB_RESULTS"
         while read -r line; do if [ -n "$line" ]; then args+=(--artifact-pattern "$line"); fi; done <<< "$ARTIFACT_PATTERNS"
-        if [ -n "$TITLE_PREFIX" ]; then args+=(--title-prefix "$TITLE_PREFIX"); fi
         case "$PUBLISH" in
           true) args+=(--publish) ;;
           false) ;;

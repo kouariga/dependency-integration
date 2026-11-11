@@ -72,52 +72,45 @@ MESSAGES = {
     },
 }
 
-MARKER_PREFIX = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*")
+MARKER = "maintenance"
 
 
 @dataclasses.dataclass(frozen=True)
 class Settings:
-    """Per-repository wording and the marker prefix that ties an open issue to its finding key."""
+    """Per-repository wording. The hidden markers that tie an issue to its finding key are fixed."""
 
-    marker_prefix: str = "maintenance"
-    title_prefix: str | None = None
     language: Language = Language.EN
-
-    def __post_init__(self):
-        if not MARKER_PREFIX.fullmatch(self.marker_prefix):
-            raise ValueError(f"Invalid marker prefix: {self.marker_prefix!r}")
 
     def text(self, message: str, /, **values: str) -> str:
         return MESSAGES[self.language][message].format(**values)
 
     def title(self, summary: str) -> str:
-        prefix = self.text("title_prefix") if self.title_prefix is None else self.title_prefix
-        return (prefix + summary)[:250]
+        return (self.text("title_prefix") + summary)[:250]
 
     @property
     def start(self) -> str:
-        return f"<!-- {self.marker_prefix}:start -->"
+        return f"<!-- {MARKER}:start -->"
 
     @property
     def end(self) -> str:
-        return f"<!-- {self.marker_prefix}:end -->"
+        return f"<!-- {MARKER}:end -->"
 
     def fingerprint_marker(self, digest: str) -> str:
-        return f"<!-- {self.marker_prefix}-fingerprint:{digest} -->"
+        return f"<!-- {MARKER}-fingerprint:{digest} -->"
 
     def incident_marker(self, key: str) -> str:
-        return f"<!-- {self.marker_prefix}-incident:{json.dumps(key, ensure_ascii=False)} -->"
+        return f"<!-- {MARKER}-incident:{json.dumps(key, ensure_ascii=False)} -->"
 
     def resolved_marker(self, episode: str) -> str:
-        return f"<!-- {self.marker_prefix}-resolved:{episode} -->"
+        return f"<!-- {MARKER}-resolved:{episode} -->"
 
     @property
     def fingerprint_pattern(self) -> re.Pattern:
-        return re.compile(rf"<!-- {re.escape(self.marker_prefix)}-fingerprint:([0-9a-f]{{64}}) -->")
+        return re.compile(rf"<!-- {re.escape(MARKER)}-fingerprint:([0-9a-f]{{64}}) -->")
 
     @property
     def incident_pattern(self) -> re.Pattern:
-        return re.compile(rf'^<!-- {re.escape(self.marker_prefix)}-incident:("(?:[^"\\\r\n]|\\.)*") -->\r?$',
+        return re.compile(rf'^<!-- {re.escape(MARKER)}-incident:("(?:[^"\\\r\n]|\\.)*") -->\r?$',
                           re.MULTILINE)
 
 
@@ -360,13 +353,11 @@ def main(argv=None, api: Api = gh_api, download=gh_download):
     parser.add_argument("--output", required=True)
     parser.add_argument("--publish", action="store_true")
     parser.add_argument("--run-url")
-    parser.add_argument("--marker-prefix", default=Settings.marker_prefix)
-    parser.add_argument("--title-prefix")
     parser.add_argument("--language", choices=[language.value for language in Language], default=Language.EN.value)
     parser.add_argument("--artifact-pattern", action="append", default=[])
     parser.add_argument("--artifact-dir", type=Path, default=Path("."))
     args = parser.parse_args(argv)
-    settings = Settings(args.marker_prefix, args.title_prefix, Language(args.language))
+    settings = Settings(Language(args.language))
     run_url = args.run_url or settings.text("local_run")
     config = {"repository": os.environ.get("GITHUB_REPOSITORY", ""), **json.loads(Path(args.config).read_text())}
     fetch_artifacts(api, download, config["repository"], os.environ.get("GITHUB_RUN_ID", ""),

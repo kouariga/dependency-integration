@@ -123,8 +123,6 @@ Inputs of the report action:
 | `artifact-pattern` | empty | Artifact name globs, one per line. For each, the newest unexpired artifact of this run whose name matches is downloaded into `artifact-dir` before the extras are read. A rerun's upload is newer than the first attempt's, so it wins. A missing artifact is not an error by itself, but its report then counts as missing. |
 | `artifact-dir` | `maintenance-artifacts` | Download directory for `artifact-pattern`. All matches land in the same directory. |
 | `output` | `maintenance-report.json` | Merged report written by the run. |
-| `marker-prefix` | `maintenance` | Prefix of the hidden markers in issue bodies and comments that tie an issue to its key. Changing it makes the action ignore issues opened under the old prefix. |
-| `title-prefix` | empty | Issue title prefix. Empty uses the language default, `[Maintenance] ` for `en` and `[保守] ` for `ja`. |
 | `language` | `en` | Message language, `en` or `ja`. |
 | `publish` | `true` | `false` writes the report without touching issues. |
 
@@ -139,7 +137,7 @@ Inputs of the scan-cloud-run action:
 | `registries` | `<region>-docker.pkg.dev` | Registry hosts to configure Docker credentials for, separated by commas. |
 | `language` | `en` | Summary language, `en` or `ja`. |
 
-Issue bodies hold a managed block between two hidden markers. The run rewrites only that block, so notes written above or below it are kept. An issue with a damaged block or two markers for one key stops the run instead of being guessed at.
+Issue bodies hold a managed block between two hidden markers with the fixed prefix `maintenance`. Issues opened by other tools or older copies with a different prefix are ignored. The run rewrites only that block, so notes written above or below it are kept. An issue with a damaged block or two markers for one key stops the run instead of being guessed at.
 
 #### Inventory file
 

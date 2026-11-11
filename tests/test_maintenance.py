@@ -340,7 +340,7 @@ class MaintenanceTests(unittest.TestCase):
 
 
 class ConfigurationTests(unittest.TestCase):
-    def test_default_marker_prefix_keeps_existing_issue_markers(self):
+    def test_markers_use_the_fixed_maintenance_prefix(self):
         settings = Settings()
         self.assertEqual(settings.start, "<!-- maintenance:start -->")
         self.assertEqual(settings.end, "<!-- maintenance:end -->")
@@ -348,12 +348,12 @@ class ConfigurationTests(unittest.TestCase):
         self.assertEqual(settings.fingerprint_marker("a" * 64), "<!-- maintenance-fingerprint:" + "a" * 64 + " -->")
         self.assertEqual(settings.resolved_marker("b" * 64), "<!-- maintenance-resolved:" + "b" * 64 + " -->")
 
-    def test_marker_prefix_selects_which_issues_are_managed(self):
-        body = '<!-- maintenance-incident:"job:scan" -->\n' + JA.start + "\nPrior failure\n" + JA.end
-        issue = {"number": 9, "title": "failed scan", "body": body}
+    def test_only_issues_with_the_fixed_marker_are_managed(self):
         report = {"checked_at": "2026-11-11T01:00:00+00:00", "findings": [], "complete": True,
                   "observed_keys": ["job:scan"]}
         for prefix, closed in (("maintenance", True), ("other-maintenance", False)):
+            body = f'<!-- {prefix}-incident:"job:scan" -->\n<!-- {prefix}:start -->\nPrior failure\n<!-- {prefix}:end -->'
+            issue = {"number": 9, "title": "failed scan", "body": body}
             writes = []
 
             def api(path, method="GET", data=None, paginate=False):
@@ -362,13 +362,8 @@ class ConfigurationTests(unittest.TestCase):
                 return [[issue]] if "/issues?state=open" in path else []
 
             with self.subTest(prefix=prefix):
-                maintenance.publish(api, {"repository": "owner/repo"}, report, "run", Settings(prefix, None, Language.JA))
+                maintenance.publish(api, {"repository": "owner/repo"}, report, "run", JA)
                 self.assertEqual(("repos/owner/repo/issues/9", "PATCH") in writes, closed)
-
-    def test_marker_prefix_must_be_safe_inside_an_html_comment(self):
-        for prefix in ("", "a -->", "-lead", "a b"):
-            with self.subTest(prefix=prefix), self.assertRaises(ValueError):
-                Settings(prefix)
 
     def test_every_language_defines_every_message(self):
         keys = {language: set(table) for language, table in maintenance.MESSAGES.items()}
@@ -385,7 +380,6 @@ class ConfigurationTests(unittest.TestCase):
         self.assertEqual(japanese, "ci.yml の直近完了実行が失敗しています。")
         self.assertEqual(Settings().title(english), "[Maintenance] " + english)
         self.assertEqual(JA.title(japanese), "[保守] " + japanese)
-        self.assertEqual(Settings(title_prefix="").title(english), english)
 
     def test_japanese_block_matches_the_existing_issue_format(self):
         report = {"checked_at": "2026-11-11T01:00:00+00:00",
