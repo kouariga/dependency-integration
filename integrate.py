@@ -318,7 +318,10 @@ def main(argv: list[str]) -> None:
     env = os.environ
     repo, server = env["GITHUB_REPOSITORY"], env.get("GITHUB_SERVER_URL", "https://github.com")
     api = env.get("GITHUB_API_URL", "https://api.github.com")
-    token = env["GH_TOKEN"]
+    token = env.get("GH_TOKEN", "")
+    if args.command == "publish" and not token:
+        raise SystemExit("The publish token is empty. Add DEPENDENCY_INTEGRATION_TOKEN to the "
+                         "dependency-integration environment and pass it as the token input.")
     github = GitHub(token, api)
 
     if args.command == "build":

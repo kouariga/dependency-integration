@@ -3,6 +3,7 @@ import datetime
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from support import REPO, FakeGitHub, fixture, pull
 
@@ -122,6 +123,13 @@ class BodyTest(unittest.TestCase):
     def test_summary_round_trips_through_json(self):
         s = summary(Outcome(candidate(1), Decision.ELIGIBLE), Outcome(candidate(2, draft=True), Decision.DRAFT))
         self.assertEqual(Summary.from_json(s.to_json()), s)
+
+
+class TokenTest(unittest.TestCase):
+    def test_publish_with_empty_token_fails_with_a_clear_message(self):
+        env = {"GITHUB_REPOSITORY": REPO, "GH_TOKEN": ""}
+        with mock.patch.dict("os.environ", env), self.assertRaisesRegex(SystemExit, "publish token is empty"):
+            integrate.main(["publish", "--artifact-dir", "unused"])
 
 
 class IdempotencyTest(unittest.TestCase):
