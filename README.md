@@ -15,6 +15,8 @@ On a schedule, it collects every open Dependabot PR whose checks pass, merges th
 
 The integration PR runs your normal CI, because it is pushed with a personal access token rather than `GITHUB_TOKEN`.
 
+The repository also provides a daily [maintenance report](#maintenance-report) that tracks workflow health, Dependabot, and deployed image vulnerabilities as issues.
+
 ## When an integration PR is open
 
 The run still builds the eligible set from the latest default branch tip, then compares it with the set recorded in the open PR's marker. A set is the included PR numbers with their head commits, so a Dependabot rebase counts as a change.
@@ -64,6 +66,102 @@ Dependabot notices that each included update is now on the default branch and cl
 - Two updates that merge cleanly as text can still break together. The integration PR's own CI is the check for that.
 - A repository with a required check that only runs locally still needs that check run against the integration branch before merge.
 - Only one integration PR is open at a time. Updates that arrive while it waits for review are folded into it unless someone changed its branch.
+
+## Maintenance report
+
+A daily check that keeps one GitHub issue open for each maintenance problem it finds, and closes the issue once a complete check confirms the problem is gone. Two composite actions share the work.
+
+- **report** reads the repository's own health: the latest completed run of each listed workflow, whether each listed scheduled workflow completed in the last 36 hours and how it ended, the latest result of each Dependabot update job in the last 30 days, and Dependabot PRs open for 7 days or more. It merges extra reports and earlier job results into that, then opens, updates, or closes issues.
+- **scan-cloud-run** lists the image digest of every serving revision of every Cloud Run service and of every Cloud Run job in one project and region, scans each image with a pinned Trivy, and writes an extra report for **report** to read.
+
+### Policy
+
+Vulnerability findings never fail anything. They are reported: a HIGH or CRITICAL vulnerability with a fixed version is an `attention` finding, and one without a fixed version is a `warning` finding. Only infrastructure failures are `error` findings: a scanner or gcloud failure, history that cannot be read, a missing or malformed extra report, or an earlier job that did not succeed. The report step exits with status 1 when there is an `error` finding, so the failure shows in the Actions tab. It never fails because of `attention` or `warning` findings.
+
+An issue is closed only when the report is complete. A report is complete when `required_reports` is not empty and the report has no `error` finding and no `deployed:unscanned` finding. A workflow, scheduled outcome, updater, or job finding closes only once a later result for it was actually observed, and a stale PR finding closes only once the PR is closed. Before closing, the run posts one comment with its evidence. A retry of a failed close does not post it again.
+
+### Report contract
+
+Every extra report is a JSON object with a `findings` list. Each finding has four string fields.
+
+```json
+{"findings": [{"key": "upstream:ffmpeg", "level": "attention", "summary": "FFmpeg 8.1 is released.", "url": "https://example.com/release"}]}
+```
+
+- `key` identifies the problem across runs. One open issue exists per key. Keep it stable and free of values that change on every run, such as digests or run IDs.
+- `level` is `error`, `attention`, or `warning`. Use `error` only when the check itself could not run.
+- `summary` is the issue title after the prefix and the line in the issue body. A change of summary for the same key updates the issue in place.
+- `url` links to evidence, or is empty.
+
+A report file that is missing, unreadable, or not in this shape becomes an `error` finding keyed `read:extra:<file name>`.
+
+**scan-cloud-run** writes `report.json` in this shape into `output-dir`, next to `inventory.json` and one directory per image holding the raw Trivy JSON and a CycloneDX SBOM. Its finding keys are `deployed:fix-available:<resource>` and `deployed:no-fix:<resource>`, where the resource is the service or job name. There is one finding per resource and group, and its summary lists the CVE IDs, so a redeploy with a new digest updates the same issue. A failed scan or an inventory that changed during the scan is the `error` finding `deployed:unavailable`. The scanner runs without the Docker socket: the image is saved with `docker save` and mounted read-only into the Trivy container, which reads it with `--input`.
+
+### Setup per repository
+
+1. Add `.github/maintenance.json`. See [`examples/maintenance.json`](examples/maintenance.json). `workflows` lists workflow files whose latest completed run on the default branch must succeed. `scheduled_workflows` lists workflow files that must complete a scheduled run every 36 hours. `required_reports` lists the file names of extra reports every run must provide. `repository` is optional and defaults to the current repository.
+2. Copy [`examples/maintenance-caller.yml`](examples/maintenance-caller.yml) to `.github/workflows/dependency-maintenance.yml` and replace each `<sha>` with the full commit SHA of the release of this repository you reviewed.
+3. Set the repository variables the example reads: the Workload Identity provider, a read-only service account, the Google Cloud project, and the region.
+4. Run the workflow once with **Run workflow** to check the setup.
+
+GCP authentication stays in the caller. The caller runs `google-github-actions/auth` and `setup-gcloud` before **scan-cloud-run**, and the Workload Identity provider's attribute condition, which limits the token to your repository and default branch, is configured on the Google Cloud side. Neither action requests credentials of its own. The service account needs read access to Cloud Run and to the Artifact Registry repositories that hold the images.
+
+Permissions per job:
+
+| Job | Permissions | Why |
+| --- | --- | --- |
+| scan | `contents: read`, `id-token: write` | Checkout and the OIDC token for Workload Identity. |
+| report | `contents: read`, `actions: read`, `pull-requests: read`, `issues: write` | Read workflow runs and artifacts, list Dependabot PRs, and manage issues with `github.token`. |
+
+Inputs of the report action:
+
+| Input | Default | Meaning |
+| --- | --- | --- |
+| `config` | `.github/maintenance.json` | Path to the repository's maintenance configuration. |
+| `extras` | empty | Extra report paths, one per line. |
+| `job-results` | empty | `NAME=CONCLUSION` per line, for example `scan=${{ needs.scan.result }}`. Anything but `success` is an `error` finding keyed `job:<name>`. |
+| `artifact-pattern` | empty | Artifact name globs, one per line. For each, the newest unexpired artifact of this run whose name matches is downloaded into `artifact-dir` before the extras are read. A rerun's upload is newer than the first attempt's, so it wins. A missing artifact is not an error by itself, but its report then counts as missing. |
+| `artifact-dir` | `maintenance-artifacts` | Download directory for `artifact-pattern`. All matches land in the same directory. |
+| `output` | `maintenance-report.json` | Merged report written by the run. |
+| `marker-prefix` | `rise-maintenance` | Prefix of the hidden markers in issue bodies and comments that tie an issue to its key. Changing it makes the action ignore issues opened under the old prefix. |
+| `title-prefix` | empty | Issue title prefix. Empty uses the language default, `[Maintenance] ` for `en` and `[保守] ` for `ja`. |
+| `language` | `en` | Message language, `en` or `ja`. |
+| `publish` | `true` | `false` writes the report without touching issues. |
+
+Inputs of the scan-cloud-run action:
+
+| Input | Default | Meaning |
+| --- | --- | --- |
+| `project` | required | Google Cloud project ID, for example `example-project`. |
+| `region` | required | Cloud Run region. |
+| `output-dir` | `maintenance-scan` | Directory for `report.json`, `inventory.json`, and the raw scans. Upload it as an artifact so the report job can read it. |
+| `registries` | `<region>-docker.pkg.dev` | Registry hosts to configure Docker credentials for, separated by commas. |
+| `language` | `en` | Summary language, `en` or `ja`. |
+
+Issue bodies hold a managed block between two hidden markers. The run rewrites only that block, so notes written above or below it are kept. An issue with a damaged block or two markers for one key stops the run instead of being guessed at.
+
+### Adding a repository-specific report
+
+Any job can contribute findings by writing a file in the report contract, uploading it as an artifact, and naming it in the report job. For example, a job that checks whether an upstream project shipped a release:
+
+```yaml
+  upstream:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: python3 scripts/check_upstream_release.py --output upstream/upstream-release.json
+      - if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: upstream-release-${{ github.run_attempt }}
+          path: upstream/
+```
+
+Then add `upstream` to the report job's `needs`, `upstream-release-*` to `artifact-pattern`, `maintenance-artifacts/upstream-release.json` to `extras`, `upstream=${{ needs.upstream.result }}` to `job-results`, and `upstream-release.json` to `required_reports`. The script writes `{"findings": []}` when there is nothing new, so the run stays complete and earlier upstream issues can close.
 
 ## Development
 

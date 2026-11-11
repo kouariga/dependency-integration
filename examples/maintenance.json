@@ -1,0 +1,12 @@
+{
+  "workflows": [
+    "ci.yml",
+    "deploy.yml"
+  ],
+  "scheduled_workflows": [
+    "dependency-maintenance.yml"
+  ],
+  "required_reports": [
+    "report.json"
+  ]
+}
